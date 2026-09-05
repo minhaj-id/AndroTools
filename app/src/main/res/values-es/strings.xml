@@ -1,0 +1,20 @@
+<resources>
+    <string name="app_name">Multi Tools</string>
+    <string name="nav_explorer">Explorador</string>
+    <string name="nav_scanner">Escáner</string>
+    <string name="nav_notes">Notas</string>
+    <string name="nav_planner">Planificador</string>
+    <string name="nav_cleaner">Limpiador</string>
+    <string name="action_search">Buscar</string>
+    <string name="action_save">Guardar</string>
+    <string name="action_delete">Eliminar</string>
+    <string name="action_cancel">Cancelar</string>
+    <string name="action_close">Cerrar</string>
+    <string name="action_refresh">Actualizar</string>
+    <string name="language_title">Seleccionar Idioma</string>
+    <string name="widget_planner_description">Tareas pendientes del planificador y acceso directo para notas rápidas</string>
+    <string name="widget_planner_tasks">Próximas Tareas</string>
+    <string name="widget_quick_note">Nota Rápida</string>
+    <string name="widget_open_planner">Abrir Planificador</string>
+    <string name="widget_no_tasks">¡Todas las tareas completadas! Toca arriba para crear nueva.</string>
+</resources>

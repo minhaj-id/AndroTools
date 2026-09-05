@@ -1,0 +1,20 @@
+<resources>
+    <string name="app_name">Multi Tools</string>
+    <string name="nav_explorer">Explorer</string>
+    <string name="nav_scanner">Scanner</string>
+    <string name="nav_notes">Catatan</string>
+    <string name="nav_planner">Planner</string>
+    <string name="nav_cleaner">Cleaner</string>
+    <string name="action_search">Cari</string>
+    <string name="action_save">Simpan</string>
+    <string name="action_delete">Hapus</string>
+    <string name="action_cancel">Batal</string>
+    <string name="action_close">Tutup</string>
+    <string name="action_refresh">Segarkan</string>
+    <string name="language_title">Pilih Bahasa</string>
+    <string name="widget_planner_description">Widget pengingat rencana mendatang dan pintasan catatan cepat</string>
+    <string name="widget_planner_tasks">Rencana Mendatang</string>
+    <string name="widget_quick_note">Catatan Cepat</string>
+    <string name="widget_open_planner">Buka Planner</string>
+    <string name="widget_no_tasks">Semua tugas selesai! Ketuk untuk buat baru.</string>
+</resources>

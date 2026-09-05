@@ -1,0 +1,6 @@
+{
+  "name": "Multi Tools",
+  "description": "Multi-utility productivity suite featuring Windows-style File Manager with Network explorer, CamScanner with OCR and PDF export, Notes with Stylus and Voice input, Planner with Alarms and Voice, and Deep Cleaner with APK Backup.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
