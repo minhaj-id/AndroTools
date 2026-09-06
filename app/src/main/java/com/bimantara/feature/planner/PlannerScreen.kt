@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsActive
@@ -94,6 +95,7 @@ fun PlannerScreen(
     val currentLanguage by AppLanguageManager.currentLanguage.collectAsState()
     val strings = LocalAppStrings.current
     var showLanguageDialog by remember { mutableStateOf(false) }
+    var showAboutDialog by remember { mutableStateOf(false) }
 
     var showAddEditDialog by remember { mutableStateOf(false) }
     var itemToEdit by remember { mutableStateOf<PlannerItemEntity?>(null) }
@@ -156,6 +158,18 @@ fun PlannerScreen(
                         text = strings.plannerSubtitle,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                // About Menu Button
+                IconButton(
+                    onClick = { showAboutDialog = true },
+                    modifier = Modifier.testTag("planner_about_btn")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = "Tentang Aplikasi",
+                        tint = Color(0xFF8B5CF6)
                     )
                 }
 
@@ -318,6 +332,12 @@ fun PlannerScreen(
     if (showLanguageDialog) {
         AppLanguageSelectionDialog(
             onDismiss = { showLanguageDialog = false }
+        )
+    }
+
+    if (showAboutDialog) {
+        com.bimantara.ui.about.AboutDialog(
+            onDismiss = { showAboutDialog = false }
         )
     }
 }

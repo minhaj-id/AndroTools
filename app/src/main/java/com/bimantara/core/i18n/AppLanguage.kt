@@ -297,6 +297,41 @@ data class AppStrings(
         "Español" -> "Marco Detectado • 96% Precisión"
         else -> "Bingkai Terbaca • 96% Presisi"
     }
+    val scanBatchTitle: String get() = when (language) {
+        "English" -> "Batch Scan (Multi-Page)"
+        "Español" -> "Escaneo por Lotes (Multipágina)"
+        else -> "Pindai Batch (Multi-Halaman)"
+    }
+    val scanPickMultiple: String get() = when (language) {
+        "English" -> "Pick Multiple Images"
+        "Español" -> "Elegir Varias Imágenes"
+        else -> "Pilih Banyak Gambar"
+    }
+    val scanAddPage: String get() = when (language) {
+        "English" -> "Add Page"
+        "Español" -> "Agregar Página"
+        else -> "Tambah Halaman"
+    }
+    val scanAutoRotateAll: String get() = when (language) {
+        "English" -> "Auto-Rotate All"
+        "Español" -> "Auto-Rotar Todo"
+        else -> "Rotasi Otomatis Semua"
+    }
+    val scanAutoRotatePdf: String get() = when (language) {
+        "English" -> "Auto-Rotate to Portrait in PDF"
+        "Español" -> "Auto-Rotar a Vertical en PDF"
+        else -> "Auto-Rotasi ke Portrait saat Ekspor PDF"
+    }
+    val scanApplyAll: String get() = when (language) {
+        "English" -> "Apply to All Pages"
+        "Español" -> "Aplicar a Todas"
+        else -> "Terapkan ke Semua Halaman"
+    }
+    val menuAbout: String get() = when (language) {
+        "English" -> "About"
+        "Español" -> "Acerca de"
+        else -> "Tentang"
+    }
 }
 
 val IndonesianStrings = AppStrings(

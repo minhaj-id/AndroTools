@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
@@ -104,6 +105,7 @@ fun CleanerScreen(
     val backupProgress by viewModel.backupProgress.collectAsState()
 
     var showApkSuccessDialog by remember { mutableStateOf<Pair<String, File>?>(null) }
+    var showAboutDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -143,6 +145,18 @@ fun CleanerScreen(
                     text = strings.cleanerSubtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            // About Menu Button
+            IconButton(
+                onClick = { showAboutDialog = true },
+                modifier = Modifier.testTag("cleaner_about_btn")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Info,
+                    contentDescription = "Tentang Aplikasi",
+                    tint = Color(0xFFEF4444)
                 )
             }
 
@@ -298,6 +312,12 @@ fun CleanerScreen(
     if (showLanguageDialog) {
         AppLanguageSelectionDialog(
             onDismiss = { showLanguageDialog = false }
+        )
+    }
+
+    if (showAboutDialog) {
+        com.bimantara.ui.about.AboutDialog(
+            onDismiss = { showAboutDialog = false }
         )
     }
 }

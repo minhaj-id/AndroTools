@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Save
@@ -117,6 +118,7 @@ fun NotesListView(viewModel: NotesViewModel) {
 
     var showLanguageDialog by remember { mutableStateOf(false) }
     var showAdvancedSearch by remember { mutableStateOf(false) }
+    var showAboutDialog by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -157,6 +159,19 @@ fun NotesListView(viewModel: NotesViewModel) {
                         text = "${strings.tabNotesType}, ${strings.tabNotesStylus} & ${strings.actionVoiceInput}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                // About button
+                IconButton(
+                    onClick = { showAboutDialog = true },
+                    modifier = Modifier.size(36.dp).testTag("notes_about_btn")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = "Tentang Aplikasi",
+                        tint = Color(0xFFF59E0B),
+                        modifier = Modifier.size(20.dp)
                     )
                 }
 
@@ -473,6 +488,12 @@ fun NotesListView(viewModel: NotesViewModel) {
     if (showLanguageDialog) {
         com.bimantara.core.i18n.AppLanguageSelectionDialog(
             onDismiss = { showLanguageDialog = false }
+        )
+    }
+
+    if (showAboutDialog) {
+        com.bimantara.ui.about.AboutDialog(
+            onDismiss = { showAboutDialog = false }
         )
     }
 }

@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "Multi Tools"
+rootProject.name = "AndroTools"
 
 include(":app")

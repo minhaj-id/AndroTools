@@ -25,6 +25,8 @@ import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.EventNote
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -119,6 +121,7 @@ class MainActivity : ComponentActivity() {
 fun MultiToolsMainApp() {
     val context = LocalContext.current
     var selectedDestination by rememberSaveable { mutableStateOf(MainDestination.FILE_MANAGER) }
+    var showAboutDialog by remember { mutableStateOf(false) }
 
     // Request runtime permissions on launch (Notifications on Android 13+, Audio recording, Camera)
     val permissionsToRequest = remember {
@@ -188,6 +191,26 @@ fun MultiToolsMainApp() {
                             modifier = Modifier.testTag(destination.testTag)
                         )
                     }
+
+                    Spacer(modifier = Modifier.weight(1f))
+                    NavigationRailItem(
+                        selected = false,
+                        onClick = { showAboutDialog = true },
+                        icon = {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = "Tentang Aplikasi",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        },
+                        label = {
+                            Text(
+                                text = "About",
+                                fontSize = 11.sp
+                            )
+                        },
+                        modifier = Modifier.testTag("nav_about_item")
+                    )
                 }
 
                 Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
@@ -259,6 +282,12 @@ fun MultiToolsMainApp() {
                     )
                 }
             }
+        }
+
+        if (showAboutDialog) {
+            com.bimantara.ui.about.AboutDialog(
+                onDismiss = { showAboutDialog = false }
+            )
         }
     }
 }

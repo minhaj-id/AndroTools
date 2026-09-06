@@ -131,6 +131,7 @@ fun FileManagerScreen(
     var showSortMenu by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
     var showAdvancedSearch by remember { mutableStateOf(false) }
+    var showAboutDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -201,6 +202,18 @@ fun FileManagerScreen(
                             color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
                         )
                     }
+                }
+
+                IconButton(
+                    onClick = { showAboutDialog = true },
+                    modifier = Modifier.size(32.dp).testTag("fm_about_btn")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = "Tentang Aplikasi",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
 
                 IconButton(
@@ -841,6 +854,12 @@ fun FileManagerScreen(
     if (showLanguageDialog) {
         com.bimantara.core.i18n.AppLanguageSelectionDialog(
             onDismiss = { showLanguageDialog = false }
+        )
+    }
+
+    if (showAboutDialog) {
+        com.bimantara.ui.about.AboutDialog(
+            onDismiss = { showAboutDialog = false }
         )
     }
 }
