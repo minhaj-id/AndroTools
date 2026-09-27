@@ -30,9 +30,14 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
+import com.bimantara.feature.scanner.pdfviewer.LightweightPdfRenderer
+import com.bimantara.feature.scanner.pdfviewer.PdfTabItem
+import com.bimantara.feature.scanner.ocr.OcrLanguage
+import com.bimantara.feature.scanner.ocr.TesseractOcrManager
+import com.bimantara.feature.scanner.ocr.OcrRecognitionResult
 
 enum class ScannerViewMode {
-    GALLERY, EDITOR
+    GALLERY, EDITOR, PDF_VIEWER, LIVE_CAMERA
 }
 
 /**
@@ -86,6 +91,25 @@ class CamScannerViewModel(application: Application) : AndroidViewModel(applicati
     private val _isOcrLoading = MutableStateFlow(false)
     val isOcrLoading: StateFlow<Boolean> = _isOcrLoading.asStateFlow()
 
+    private val ocrManager = TesseractOcrManager.getInstance(application)
+
+    private val _selectedOcrLanguage = MutableStateFlow(OcrLanguage.INDONESIAN)
+    val selectedOcrLanguage: StateFlow<OcrLanguage> = _selectedOcrLanguage.asStateFlow()
+
+    private val _ocrProgress = MutableStateFlow(0)
+    val ocrProgress: StateFlow<Int> = _ocrProgress.asStateFlow()
+
+    private val _ocrConfidence = MutableStateFlow<Int?>(null)
+    val ocrConfidence: StateFlow<Int?> = _ocrConfidence.asStateFlow()
+
+    private val _downloadingLangCode = MutableStateFlow<String?>(null)
+    val downloadingLangCode: StateFlow<String?> = _downloadingLangCode.asStateFlow()
+
+    private val _downloadProgress = MutableStateFlow(0f)
+    val downloadProgress: StateFlow<Float> = _downloadProgress.asStateFlow()
+
+    val ocrManagerInstance: TesseractOcrManager get() = ocrManager
+
     private val _isExportingPdf = MutableStateFlow(false)
     val isExportingPdf: StateFlow<Boolean> = _isExportingPdf.asStateFlow()
 
@@ -108,6 +132,13 @@ class CamScannerViewModel(application: Application) : AndroidViewModel(applicati
     private val _autoRotateExport = MutableStateFlow(true)
     val autoRotateExport: StateFlow<Boolean> = _autoRotateExport.asStateFlow()
 
+    // Multi-tab PDF Viewer state
+    private val _openPdfTabs = MutableStateFlow<List<PdfTabItem>>(emptyList())
+    val openPdfTabs: StateFlow<List<PdfTabItem>> = _openPdfTabs.asStateFlow()
+
+    private val _activePdfTabIndex = MutableStateFlow(0)
+    val activePdfTabIndex: StateFlow<Int> = _activePdfTabIndex.asStateFlow()
+
     init {
         // Seed an initial sample document silently into the database if empty
         viewModelScope.launch(Dispatchers.IO) {
@@ -119,8 +150,16 @@ class CamScannerViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    fun openLiveCamera() {
+        _viewMode.value = ScannerViewMode.LIVE_CAMERA
+    }
+
     fun openGallery() {
         _viewMode.value = ScannerViewMode.GALLERY
+    }
+
+    fun switchToEditor() {
+        _viewMode.value = ScannerViewMode.EDITOR
     }
 
     /**
@@ -143,6 +182,7 @@ class CamScannerViewModel(application: Application) : AndroidViewModel(applicati
         _ocrText.value = ""
         _lastExportedPdf.value = null
         _selectedScaleRatio.value = DocumentScaleRatio.AUTO
+        _isFrameOverlayActive.value = true
         _viewMode.value = ScannerViewMode.EDITOR
 
         detectFrame()
@@ -301,6 +341,26 @@ class CamScannerViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    fun replaceCurrentPageBitmap(newBitmap: Bitmap) {
+        val list = _pages.value
+        val curIdx = _currentPageIndex.value
+        if (curIdx in list.indices) {
+            val enhanced = DocumentEnhancer.applyFilter(newBitmap, _selectedFilter.value)
+            val updated = list.toMutableList()
+            val cur = updated[curIdx]
+            val newFrame = DocumentFrameDetector.detectFrame(newBitmap)
+            updated[curIdx] = cur.copy(
+                originalBitmap = newBitmap,
+                enhancedBitmap = enhanced,
+                detectedFrame = newFrame
+            )
+            _pages.value = updated
+            _originalBitmap.value = newBitmap
+            _enhancedBitmap.value = enhanced
+            _detectedFrame.value = newFrame
+        }
+    }
+
     private fun saveCurrentPageSnapshot() {
         val idx = _currentPageIndex.value
         val list = _pages.value
@@ -340,6 +400,18 @@ class CamScannerViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    fun autoLockFrame() {
+        _isFrameOverlayActive.value = true
+        detectFrame()
+    }
+
+    fun updateCorner(cornerIndex: Int, newX: Float, newY: Float) {
+        val current = _detectedFrame.value ?: return
+        val updated = current.withCorner(cornerIndex, newX, newY)
+        _detectedFrame.value = updated
+        _pages.value.getOrNull(_currentPageIndex.value)?.detectedFrame = updated
+    }
+
     fun applyFrameCorrectionAndScale(ratio: DocumentScaleRatio = _selectedScaleRatio.value) {
         val orig = _originalBitmap.value ?: return
         val frame = _detectedFrame.value ?: DocumentFrameDetector.detectFrame(orig)
@@ -368,6 +440,10 @@ class CamScannerViewModel(application: Application) : AndroidViewModel(applicati
         _documentTitle.value = title
     }
 
+    fun setDocumentTitle(title: String) {
+        _documentTitle.value = title
+    }
+
     fun setOcrText(text: String) {
         _ocrText.value = text
         _pages.value.getOrNull(_currentPageIndex.value)?.ocrText = text
@@ -375,13 +451,36 @@ class CamScannerViewModel(application: Application) : AndroidViewModel(applicati
 
     fun setFilter(filter: DocumentFilter) {
         _selectedFilter.value = filter
+        val curIdx = _currentPageIndex.value
+        val list = _pages.value
         val orig = _originalBitmap.value ?: return
         viewModelScope.launch(Dispatchers.Default) {
             val processed = DocumentEnhancer.applyFilter(orig, filter)
             _enhancedBitmap.value = processed
-            _pages.value.getOrNull(_currentPageIndex.value)?.let {
-                it.filter = filter
-                it.enhancedBitmap = processed
+            if (curIdx in list.indices) {
+                val updated = list.toMutableList()
+                val cur = updated[curIdx]
+                updated[curIdx] = cur.copy(filter = filter, enhancedBitmap = processed)
+                _pages.value = updated
+            }
+        }
+    }
+
+    /**
+     * Applies a specific filter to a specific page index in the document.
+     */
+    fun setFilterForPage(pageIndex: Int, filter: DocumentFilter) {
+        val list = _pages.value
+        if (pageIndex !in list.indices) return
+        val targetPage = list[pageIndex]
+        viewModelScope.launch(Dispatchers.Default) {
+            val processed = DocumentEnhancer.applyFilter(targetPage.originalBitmap, filter)
+            val updated = list.toMutableList()
+            updated[pageIndex] = targetPage.copy(filter = filter, enhancedBitmap = processed)
+            _pages.value = updated
+            if (_currentPageIndex.value == pageIndex) {
+                _selectedFilter.value = filter
+                _enhancedBitmap.value = processed
             }
         }
     }
@@ -398,6 +497,26 @@ class CamScannerViewModel(application: Application) : AndroidViewModel(applicati
             _pages.value = updated
             _selectedFilter.value = filter
             _enhancedBitmap.value = updated.getOrNull(_currentPageIndex.value)?.enhancedBitmap
+        }
+    }
+
+    /**
+     * Rotates a specific page by 90 degrees.
+     */
+    fun rotatePage(pageIndex: Int) {
+        val list = _pages.value
+        if (pageIndex !in list.indices) return
+        val targetPage = list[pageIndex]
+        viewModelScope.launch(Dispatchers.Default) {
+            val newOrig = AutoPageRotator.rotate(targetPage.originalBitmap, 90f)
+            val newEnh = AutoPageRotator.rotate(targetPage.enhancedBitmap, 90f)
+            val updated = list.toMutableList()
+            updated[pageIndex] = targetPage.copy(originalBitmap = newOrig, enhancedBitmap = newEnh)
+            _pages.value = updated
+            if (_currentPageIndex.value == pageIndex) {
+                _originalBitmap.value = newOrig
+                _enhancedBitmap.value = newEnh
+            }
         }
     }
 
@@ -440,13 +559,52 @@ class CamScannerViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun runOcr() {
+    fun selectOcrLanguage(language: OcrLanguage) {
+        _selectedOcrLanguage.value = language
+    }
+
+    fun downloadLanguage(language: OcrLanguage, onComplete: ((Boolean) -> Unit)? = null) {
+        viewModelScope.launch {
+            _downloadingLangCode.value = language.code
+            _downloadProgress.value = 0f
+            val res = ocrManager.downloadLanguage(language) { progress ->
+                _downloadProgress.value = progress
+            }
+            _downloadingLangCode.value = null
+            if (res.isSuccess) {
+                _selectedOcrLanguage.value = language
+                onComplete?.invoke(true)
+            } else {
+                onComplete?.invoke(false)
+            }
+        }
+    }
+
+    fun deleteLanguage(code: String) {
+        ocrManager.deleteLanguage(code)
+        if (_selectedOcrLanguage.value.code == code) {
+            _selectedOcrLanguage.value = OcrLanguage.INDONESIAN
+        }
+    }
+
+    fun runOcr(targetLanguage: OcrLanguage = _selectedOcrLanguage.value) {
         val bmp = _enhancedBitmap.value ?: return
         viewModelScope.launch {
             _isOcrLoading.value = true
-            val text = OcrEngine.recognizeText(bmp)
-            _ocrText.value = text
-            _pages.value.getOrNull(_currentPageIndex.value)?.ocrText = text
+            _ocrProgress.value = 0
+            val res = ocrManager.recognizeText(bmp, targetLanguage.code) { percent ->
+                _ocrProgress.value = percent
+            }
+            if (res.isSuccess) {
+                val result = res.getOrThrow()
+                _ocrText.value = result.text
+                _ocrConfidence.value = result.confidence
+                _pages.value.getOrNull(_currentPageIndex.value)?.ocrText = result.text
+            } else {
+                val err = res.exceptionOrNull()?.localizedMessage ?: "Gagal mengenali teks"
+                _ocrText.value = "[Gagal OCR]: $err"
+                _ocrConfidence.value = 0
+            }
             _isOcrLoading.value = false
         }
     }
@@ -819,6 +977,194 @@ class CamScannerViewModel(application: Application) : AndroidViewModel(applicati
                 filterApplied = DocumentFilter.MAGIC_COLOR.name
             )
             repository.insertScannedDoc(doc)
+        }
+    }
+
+    // ==========================================
+    // DEDICATED PDF VIEWER & MULTI-TAB CONTROLS
+    // ==========================================
+
+    /**
+     * Opens a PDF file in the dedicated PDF viewer component.
+     * If already open in an existing tab, switches to that tab.
+     */
+    fun openPdfInViewer(file: File, title: String = file.nameWithoutExtension) {
+        val existingIndex = _openPdfTabs.value.indexOfFirst { it.file.absolutePath == file.absolutePath }
+        if (existingIndex >= 0) {
+            _activePdfTabIndex.value = existingIndex
+            _viewMode.value = ScannerViewMode.PDF_VIEWER
+            return
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val pageCount = LightweightPdfRenderer.getPageCount(file).coerceAtLeast(1)
+            val newTab = PdfTabItem(
+                title = title.ifBlank { file.nameWithoutExtension },
+                file = file,
+                totalPages = pageCount,
+                currentPage = 0,
+                zoomScale = 1.0f
+            )
+
+            withContext(Dispatchers.Main) {
+                val currentTabs = _openPdfTabs.value.toMutableList()
+                currentTabs.add(newTab)
+                _openPdfTabs.value = currentTabs
+                _activePdfTabIndex.value = currentTabs.size - 1
+                _viewMode.value = ScannerViewMode.PDF_VIEWER
+            }
+        }
+    }
+
+    /**
+     * Opens a document from Room database into the PDF viewer.
+     * If the document does not have an exported PDF yet, exports one automatically.
+     */
+    fun openPdfViewerFromDocEntity(doc: ScannedDocEntity) {
+        if (!doc.pdfPath.isNullOrBlank()) {
+            val pdfFile = File(doc.pdfPath)
+            if (pdfFile.exists()) {
+                openPdfInViewer(pdfFile, doc.title)
+                return
+            }
+        }
+
+        // PDF not yet generated: generate on-the-fly and open
+        val imgFile = File(doc.imagePath)
+        if (!imgFile.exists()) return
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val bmp = BitmapFactory.decodeFile(imgFile.absolutePath) ?: return@launch
+            val context = getApplication<Application>()
+            val pdfRes = PdfExporter.exportMultiPageDocumentToPdf(
+                context = context,
+                title = doc.title,
+                pages = listOf(bmp),
+                ocrTexts = if (doc.extractedText.isNotBlank()) listOf(doc.extractedText) else emptyList(),
+                autoRotatePages = true
+            )
+            val pdfFile = pdfRes.getOrNull()
+            if (pdfFile != null) {
+                // Update doc in database with pdfPath
+                repository.updateScannedDoc(doc.copy(pdfPath = pdfFile.absolutePath))
+                withContext(Dispatchers.Main) {
+                    openPdfInViewer(pdfFile, doc.title)
+                }
+            }
+        }
+    }
+
+    /**
+     * Generates or retrieves the active editor document's PDF and opens in viewer.
+     */
+    fun previewCurrentDocumentAsPdf(onDone: (() -> Unit)? = null) {
+        val existing = _lastExportedPdf.value
+        if (existing != null && existing.exists()) {
+            openPdfInViewer(existing, _documentTitle.value)
+            onDone?.invoke()
+            return
+        }
+
+        exportToPdf { generatedFile ->
+            if (generatedFile != null && generatedFile.exists()) {
+                openPdfInViewer(generatedFile, _documentTitle.value)
+            }
+            onDone?.invoke()
+        }
+    }
+
+    fun selectPdfTab(index: Int) {
+        if (index in _openPdfTabs.value.indices) {
+            _activePdfTabIndex.value = index
+        }
+    }
+
+    fun closePdfTab(tabId: String) {
+        val tabs = _openPdfTabs.value.toMutableList()
+        val indexToRemove = tabs.indexOfFirst { it.id == tabId }
+        if (indexToRemove < 0) return
+
+        tabs.removeAt(indexToRemove)
+        _openPdfTabs.value = tabs
+
+        if (tabs.isEmpty()) {
+            _viewMode.value = ScannerViewMode.GALLERY
+            _activePdfTabIndex.value = 0
+        } else {
+            val newIndex = indexToRemove.coerceAtMost(tabs.size - 1)
+            _activePdfTabIndex.value = newIndex
+        }
+    }
+
+    fun setPdfCurrentPage(pageIndex: Int) {
+        val curIndex = _activePdfTabIndex.value
+        val tabs = _openPdfTabs.value
+        if (curIndex !in tabs.indices) return
+
+        val activeTab = tabs[curIndex]
+        val clamped = pageIndex.coerceIn(0, (activeTab.totalPages - 1).coerceAtLeast(0))
+        if (clamped == activeTab.currentPage) return
+
+        val updated = tabs.toMutableList()
+        updated[curIndex] = activeTab.copy(
+            currentPage = clamped,
+            zoomScale = 1.0f,
+            panOffsetX = 0f,
+            panOffsetY = 0f
+        )
+        _openPdfTabs.value = updated
+    }
+
+    fun nextPdfPage() {
+        val curIndex = _activePdfTabIndex.value
+        val tabs = _openPdfTabs.value
+        if (curIndex in tabs.indices) {
+            val tab = tabs[curIndex]
+            if (tab.currentPage < tab.totalPages - 1) {
+                setPdfCurrentPage(tab.currentPage + 1)
+            }
+        }
+    }
+
+    fun prevPdfPage() {
+        val curIndex = _activePdfTabIndex.value
+        val tabs = _openPdfTabs.value
+        if (curIndex in tabs.indices) {
+            val tab = tabs[curIndex]
+            if (tab.currentPage > 0) {
+                setPdfCurrentPage(tab.currentPage - 1)
+            }
+        }
+    }
+
+    fun setPdfZoom(scale: Float, offsetX: Float = 0f, offsetY: Float = 0f) {
+        val curIndex = _activePdfTabIndex.value
+        val tabs = _openPdfTabs.value
+        if (curIndex in tabs.indices) {
+            val tab = tabs[curIndex]
+            val clampedScale = scale.coerceIn(0.75f, 5.0f)
+            val updated = tabs.toMutableList()
+            updated[curIndex] = tab.copy(
+                zoomScale = clampedScale,
+                panOffsetX = if (clampedScale <= 1.05f) 0f else offsetX,
+                panOffsetY = if (clampedScale <= 1.05f) 0f else offsetY
+            )
+            _openPdfTabs.value = updated
+        }
+    }
+
+    fun resetPdfZoom() {
+        val curIndex = _activePdfTabIndex.value
+        val tabs = _openPdfTabs.value
+        if (curIndex in tabs.indices) {
+            val tab = tabs[curIndex]
+            val updated = tabs.toMutableList()
+            updated[curIndex] = tab.copy(
+                zoomScale = 1.0f,
+                panOffsetX = 0f,
+                panOffsetY = 0f
+            )
+            _openPdfTabs.value = updated
         }
     }
 }

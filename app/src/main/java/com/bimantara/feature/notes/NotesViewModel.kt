@@ -1,6 +1,7 @@
 package com.bimantara.feature.notes
 
 import android.app.Application
+import android.content.Context
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -9,6 +10,7 @@ import androidx.lifecycle.viewModelScope
 import com.bimantara.data.db.AppDatabase
 import com.bimantara.data.model.NoteEntity
 import com.bimantara.data.repository.AppRepository
+import com.bimantara.feature.notes.speech.NoteSpeechManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -262,13 +264,154 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         _isPinned.value = !_isPinned.value
     }
 
+    // Android SpeechRecognizer Direct Dictation Integration
+    private val speechManager = NoteSpeechManager()
+
+    data class SpeechLanguage(val code: String, val displayName: String, val flagEmoji: String)
+
+    val supportedSpeechLanguages = listOf(
+        SpeechLanguage("id-ID", "Bahasa Indonesia", "🇮🇩"),
+        SpeechLanguage("en-US", "English (US)", "🇺🇸"),
+        SpeechLanguage("es-ES", "Español", "🇪🇸"),
+        SpeechLanguage("fr-FR", "Français", "🇫🇷"),
+        SpeechLanguage("de-DE", "Deutsch", "🇩🇪"),
+        SpeechLanguage("ar-SA", "العربية", "🇸🇦"),
+        SpeechLanguage("ja-JP", "日本語", "🇯🇵")
+    )
+
+    private val _isDictating = MutableStateFlow(false)
+    val isDictating: StateFlow<Boolean> = _isDictating.asStateFlow()
+
+    private val _speechStatus = MutableStateFlow("")
+    val speechStatus: StateFlow<String> = _speechStatus.asStateFlow()
+
+    private val _partialDictation = MutableStateFlow("")
+    val partialDictation: StateFlow<String> = _partialDictation.asStateFlow()
+
+    private val _rmsLevel = MutableStateFlow(0f)
+    val rmsLevel: StateFlow<Float> = _rmsLevel.asStateFlow()
+
+    private val _dictationLanguage = MutableStateFlow("id-ID")
+    val dictationLanguage: StateFlow<String> = _dictationLanguage.asStateFlow()
+
+    private val _dictationTarget = MutableStateFlow("CONTENT") // "CONTENT" or "TITLE"
+    val dictationTarget: StateFlow<String> = _dictationTarget.asStateFlow()
+
+    private val _shouldAutoStartDictation = MutableStateFlow(false)
+    val shouldAutoStartDictation: StateFlow<Boolean> = _shouldAutoStartDictation.asStateFlow()
+
+    private val _speechError = MutableStateFlow<String?>(null)
+    val speechError: StateFlow<String?> = _speechError.asStateFlow()
+
+    fun isSpeechRecognitionAvailable(context: Context): Boolean {
+        return speechManager.isAvailable(context)
+    }
+
+    fun setDictationTarget(target: String) {
+        _dictationTarget.value = target
+    }
+
+    fun startVoiceNote() {
+        startNewNote(NoteMode.TYPE)
+        _dictationTarget.value = "CONTENT"
+        _shouldAutoStartDictation.value = true
+    }
+
+    fun consumeAutoStartDictation(): Boolean {
+        val current = _shouldAutoStartDictation.value
+        _shouldAutoStartDictation.value = false
+        return current
+    }
+
+    fun startDictation(context: Context) {
+        _speechError.value = null
+        _isDictating.value = true
+        _partialDictation.value = ""
+        _speechStatus.value = "Menghubungkan ke mikrofon..."
+
+        speechManager.startListening(
+            context = context,
+            language = _dictationLanguage.value,
+            onReady = {
+                _speechStatus.value = "Mendengarkan... Silakan bicara"
+            },
+            onStatusChanged = { status ->
+                _speechStatus.value = status
+            },
+            onRmsChanged = { rms ->
+                _rmsLevel.value = rms
+            },
+            onPartialResult = { partial ->
+                _partialDictation.value = partial
+            },
+            onFinalResult = { finalResult ->
+                _isDictating.value = false
+                _partialDictation.value = ""
+                _rmsLevel.value = 0f
+                appendVoiceInput(finalResult)
+                _speechStatus.value = "Teks berhasil ditambahkan!"
+            },
+            onError = { errorDesc ->
+                _isDictating.value = false
+                _partialDictation.value = ""
+                _rmsLevel.value = 0f
+                _speechError.value = errorDesc
+                _speechStatus.value = errorDesc
+            }
+        )
+    }
+
+    fun stopDictation() {
+        speechManager.stopListening()
+        _isDictating.value = false
+        _partialDictation.value = ""
+        _rmsLevel.value = 0f
+    }
+
+    fun cancelDictation() {
+        speechManager.cancel()
+        _isDictating.value = false
+        _partialDictation.value = ""
+        _rmsLevel.value = 0f
+        _speechStatus.value = ""
+    }
+
+    fun setDictationLanguage(lang: String) {
+        _dictationLanguage.value = lang
+    }
+
+    fun clearSpeechError() {
+        _speechError.value = null
+    }
+
+    override fun onCleared() {
+        speechManager.destroy()
+        super.onCleared()
+    }
+
     fun appendVoiceInput(voiceText: String) {
+        val trimmed = voiceText.trim()
+        if (trimmed.isEmpty()) return
         if (_currentMode.value == NoteMode.TYPE) {
-            val current = _content.value
-            _content.value = if (current.isBlank()) voiceText else "$current $voiceText"
+            if (_dictationTarget.value == "TITLE") {
+                val current = _title.value
+                _title.value = if (current.isBlank() || current == "Catatan Baru") {
+                    trimmed.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
+                } else {
+                    "$current $trimmed"
+                }
+            } else {
+                val current = _content.value
+                _content.value = if (current.isBlank()) {
+                    trimmed.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
+                } else {
+                    val separator = if (current.endsWith("\n") || current.endsWith(" ")) "" else " "
+                    "$current$separator$trimmed"
+                }
+            }
         } else {
             val current = _title.value
-            _title.value = if (current.startsWith("Catatan")) voiceText else "$current - $voiceText"
+            _title.value = if (current.startsWith("Catatan")) trimmed else "$current - $trimmed"
         }
     }
 

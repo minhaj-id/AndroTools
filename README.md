@@ -34,6 +34,13 @@ Aplikasi ini mengintegrasikan lima modul utama: **File Explorer** bergaya deskto
   - Opsi **Terapkan ke Semua Halaman** untuk menyeragamkan filter seluruh halaman dalam batch.
 - **Mesin OCR (Optical Character Recognition) On-Device**: Ekstraksi teks dari gambar dokumen secara instan tanpa perlu koneksi internet per halaman dengan tombol salin teks.
 - **Ekspor PDF Multi-Halaman & Berbagi Langsung**: Konversi seluruh rangkaian halaman dokumen menjadi satu file PDF standar yang rapi dan bagikan via Email, WhatsApp, atau aplikasi perpesanan lainnya.
+- **Komponen Pratinjau PDF Berdedikasi (Dedicated Multi-Tab PDF Viewer)**:
+  - **Pratinjau Ringan & Cepat**: Menggunakan `android.graphics.pdf.PdfRenderer` bawaan Android untuk rendering PDF perangkat keras tanpa beban pustaka pihak ketiga yang berat.
+  - **Dukungan Multi-Tab (Multi-Tab PDF Navigation)**: Membuka beberapa dokumen PDF secara bersamaan dalam tab terpisah. Pengguna dapat beralih antar tab berkas, menutup tab, atau menambah dokumen lain dengan cepat.
+  - **Navigasi & Loncat Halaman**: Tombol navigasi halaman sebelumnya/selanjutnya, indikator halaman dinamis, serta dialog lompat ke halaman spesifik (*jump to page*).
+  - **Kontrol Zoom & Panning Gesture Interaktif**: Mendukung cubit untuk zoom (*pinch-to-zoom* hingga 400%), geser posisi (*pan*), ketuk ganda untuk reset zoom (*double-tap to reset*), serta tombol zoom in / zoom out / fit-to-screen.
+  - **Carousel Strip Thumbnail Halaman**: Panel pratinjau thumbnail halaman interaktif di bagian bawah layar yang dapat diperluas atau disembunyikan untuk melompat antar halaman secara visual.
+  - **Fitur Berbagi Berkas & Info PDF**: Berbagi berkas PDF yang sedang dibuka dan melihat rincian metadata dokumen (nama berkas, total halaman, ukuran byte, lokasi penyimpanan).
 - **Penyimpanan Lokal**: Gambar dan metadata dokumen tersimpan aman di basis data lokal Room.
 
 ### 3. 📝 Catatan Cerdas & Kanvas Stylus (Smart Notes)

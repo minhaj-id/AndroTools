@@ -38,6 +38,14 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
+import androidx.compose.material.icons.filled.MicOff
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Save
@@ -63,11 +71,13 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -446,14 +456,28 @@ fun NotesListView(viewModel: NotesViewModel) {
             }
         }
 
-        // Action FABs (Stylus Mode & Type Mode)
+        // Action FABs (Voice Dictation, Stylus Mode & Type Mode)
         Column(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
             horizontalAlignment = Alignment.End
         ) {
+            // Voice note dictation FAB
+            FloatingActionButton(
+                onClick = { viewModel.startVoiceNote() },
+                containerColor = Color(0xFFEF4444),
+                contentColor = Color.White,
+                modifier = Modifier.testTag("notes_new_voice_btn")
+            ) {
+                Row(modifier = Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Mic, contentDescription = "Dikte Suara")
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Dikte Suara", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                }
+            }
+
             // Stylus note FAB
             FloatingActionButton(
                 onClick = { viewModel.startNewNote(NoteMode.STYLUS) },
@@ -630,13 +654,24 @@ fun NoteEditorView(viewModel: NotesViewModel) {
     val mode by viewModel.currentMode.collectAsState()
     val isPinned by viewModel.isPinned.collectAsState()
 
+    // Speech-to-Text state from ViewModel
+    val isDictating by viewModel.isDictating.collectAsState()
+    val speechStatus by viewModel.speechStatus.collectAsState()
+    val partialDictation by viewModel.partialDictation.collectAsState()
+    val rmsLevel by viewModel.rmsLevel.collectAsState()
+    val dictationLanguage by viewModel.dictationLanguage.collectAsState()
+    val speechError by viewModel.speechError.collectAsState()
+    val dictationTarget by viewModel.dictationTarget.collectAsState()
+    val shouldAutoStartDictation by viewModel.shouldAutoStartDictation.collectAsState()
+
     var selectedColor by remember { mutableStateOf(Color(0xFF0F172A)) }
     var strokeWidth by remember { mutableFloatStateOf(6f) }
     var isEraser by remember { mutableStateOf(false) }
 
     var showVoiceInputDialog by remember { mutableStateOf(false) }
+    var showSpeechLangDialog by remember { mutableStateOf(false) }
 
-    // Android Speech Recognizer Launcher
+    // Fallback Android Speech Recognizer Intent Launcher
     val voiceRecognitionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -646,6 +681,66 @@ fun NoteEditorView(viewModel: NotesViewModel) {
                 viewModel.appendVoiceInput(spokenText)
                 Toast.makeText(context, "${strings.actionVoiceInput}: $spokenText", Toast.LENGTH_SHORT).show()
             }
+        }
+    }
+
+    // Audio Permission Launcher for Android SpeechRecognizer
+    val audioPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            if (viewModel.isSpeechRecognitionAvailable(context)) {
+                viewModel.startDictation(context)
+            } else {
+                try {
+                    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                        putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+                        putExtra(RecognizerIntent.EXTRA_PROMPT, strings.actionVoiceInput)
+                    }
+                    voiceRecognitionLauncher.launch(intent)
+                } catch (e: Exception) {
+                    showVoiceInputDialog = true
+                }
+            }
+        } else {
+            Toast.makeText(context, "Izin mikrofon diperlukan untuk mendiktekan teks", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val triggerDictation: () -> Unit = {
+        val hasPermission = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (hasPermission) {
+            if (isDictating) {
+                viewModel.stopDictation()
+            } else {
+                if (viewModel.isSpeechRecognitionAvailable(context)) {
+                    viewModel.startDictation(context)
+                } else {
+                    try {
+                        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+                            putExtra(RecognizerIntent.EXTRA_PROMPT, strings.actionVoiceInput)
+                        }
+                        voiceRecognitionLauncher.launch(intent)
+                    } catch (e: Exception) {
+                        showVoiceInputDialog = true
+                    }
+                }
+            }
+        } else {
+            audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    LaunchedEffect(shouldAutoStartDictation) {
+        if (viewModel.consumeAutoStartDictation()) {
+            triggerDictation()
         }
     }
 
@@ -673,23 +768,16 @@ fun NoteEditorView(viewModel: NotesViewModel) {
                 modifier = Modifier.weight(1f)
             )
 
-            // Voice input action button
+            // Direct SpeechRecognizer Voice Dictation button
             IconButton(
-                onClick = {
-                    try {
-                        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
-                            putExtra(RecognizerIntent.EXTRA_PROMPT, strings.actionVoiceInput)
-                        }
-                        voiceRecognitionLauncher.launch(intent)
-                    } catch (e: Exception) {
-                        showVoiceInputDialog = true
-                    }
-                },
+                onClick = { triggerDictation() },
                 modifier = Modifier.testTag("notes_voice_input_btn")
             ) {
-                Icon(Icons.Default.Mic, contentDescription = strings.actionVoiceInput, tint = Color(0xFFDC2626))
+                Icon(
+                    imageVector = if (isDictating) Icons.Default.MicOff else Icons.Default.Mic,
+                    contentDescription = strings.actionVoiceInput,
+                    tint = if (isDictating) Color(0xFFDC2626) else MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
 
             // Toggle Pinned
@@ -740,21 +828,248 @@ fun NoteEditorView(viewModel: NotesViewModel) {
             singleLine = true,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .padding(horizontal = 16.dp, vertical = 6.dp),
             shape = RoundedCornerShape(8.dp)
         )
 
+        // Dedicated Speech-to-Text Dock (Active or Quick Access)
         if (mode == NoteMode.TYPE) {
-            // Type Mode Editor
-            OutlinedTextField(
-                value = content,
-                onValueChange = { viewModel.setContent(it) },
-                placeholder = { Text(strings.notesContentHint) },
+            AnimatedVisibility(visible = isDictating) {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                        .testTag("notes_speech_active_card")
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                // Pulsing microphone badge with animated audio waveform bars
+                                Box(
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFFEF4444).copy(alpha = 0.25f + (rmsLevel * 0.4f))),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Mic,
+                                        contentDescription = "Mendengarkan",
+                                        tint = Color(0xFFDC2626),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = speechStatus.ifBlank { "Mendengarkan suara..." },
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        // Dynamic audio level bars
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            listOf(0.4f, 0.9f, 1f, 0.7f, 0.5f).forEach { multiplier ->
+                                                val barHeight = (6 + (rmsLevel * 18 * multiplier)).coerceIn(4f, 24f).dp
+                                                Box(
+                                                    modifier = Modifier
+                                                        .width(3.dp)
+                                                        .height(barHeight)
+                                                        .clip(RoundedCornerShape(1.5.dp))
+                                                        .background(Color(0xFFDC2626))
+                                                )
+                                            }
+                                        }
+                                    }
+                                    Text(
+                                        text = "Bicara dengan jelas menggunakan mikrofon",
+                                        fontSize = 10.sp,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                                    )
+                                }
+                            }
+
+                            // Language switch & Stop dictation button
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                val currentSpeechLang = viewModel.supportedSpeechLanguages.firstOrNull { it.code == dictationLanguage }
+                                OutlinedButton(
+                                    onClick = { showSpeechLangDialog = true },
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                                    modifier = Modifier.height(30.dp)
+                                ) {
+                                    Text(
+                                        text = "${currentSpeechLang?.flagEmoji ?: "🌐"} ${currentSpeechLang?.code?.take(2)?.uppercase() ?: "ID"}",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Button(
+                                    onClick = { viewModel.stopDictation() },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.height(32.dp),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp)
+                                ) {
+                                    Icon(Icons.Default.Stop, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Selesai", fontSize = 11.sp)
+                                }
+                            }
+                        }
+
+                        // Target Selector chips (Isi Catatan vs Judul)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = "Dikte ke:",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            FilterChip(
+                                selected = dictationTarget == "CONTENT",
+                                onClick = { viewModel.setDictationTarget("CONTENT") },
+                                label = { Text("📝 Isi Catatan", fontSize = 10.sp) },
+                                modifier = Modifier.height(28.dp)
+                            )
+                            FilterChip(
+                                selected = dictationTarget == "TITLE",
+                                onClick = { viewModel.setDictationTarget("TITLE") },
+                                label = { Text("🏷️ Judul", fontSize = 10.sp) },
+                                modifier = Modifier.height(28.dp)
+                            )
+                        }
+
+                        // Live partial transcription display
+                        if (partialDictation.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Surface(
+                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Default.GraphicEq,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "“$partialDictation...”",
+                                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                                        fontSize = 13.sp,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Quick Dictation Bar when idle
+            if (!isDictating) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Button(
+                        onClick = { triggerDictation() },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFEF4444).copy(alpha = 0.12f),
+                            contentColor = Color(0xFFDC2626)
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .height(32.dp)
+                            .testTag("notes_idle_dictate_btn"),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 0.dp)
+                    ) {
+                        Icon(Icons.Default.Mic, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Dikte Suara Mikrofon", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    }
+
+                    val currentSpeechLang = viewModel.supportedSpeechLanguages.firstOrNull { it.code == dictationLanguage }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable { showSpeechLangDialog = true }
+                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "${currentSpeechLang?.flagEmoji ?: "🇮🇩"} ${currentSpeechLang?.displayName ?: "Bahasa Indonesia"}",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            // Type Mode Editor with Floating Mic Action
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                shape = RoundedCornerShape(8.dp)
-            )
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
+            ) {
+                OutlinedTextField(
+                    value = content,
+                    onValueChange = { viewModel.setContent(it) },
+                    placeholder = { Text(strings.notesContentHint) },
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .testTag("notes_content_editor"),
+                    shape = RoundedCornerShape(8.dp)
+                )
+
+                // Floating Mic Button inside text editor for fast dictation
+                FloatingActionButton(
+                    onClick = { triggerDictation() },
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(12.dp)
+                        .testTag("notes_editor_floating_mic_btn"),
+                    containerColor = if (isDictating) Color(0xFFDC2626) else Color(0xFF0284C7),
+                    contentColor = Color.White
+                ) {
+                    Icon(
+                        imageVector = if (isDictating) Icons.Default.Stop else Icons.Default.Mic,
+                        contentDescription = "Dikte Mikrofon",
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
         } else {
             // Stylus Canvas Mode
             Column(modifier = Modifier.fillMaxSize()) {
@@ -915,6 +1230,60 @@ fun NoteEditorView(viewModel: NotesViewModel) {
             dismissButton = {
                 TextButton(onClick = { showVoiceInputDialog = false }) {
                     Text("Batal")
+                }
+            }
+        )
+    }
+
+    if (showSpeechLangDialog) {
+        AlertDialog(
+            onDismissRequest = { showSpeechLangDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Translate, contentDescription = null, tint = Color(0xFF0284C7))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Pilih Bahasa Dikte")
+                }
+            },
+            text = {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(viewModel.supportedSpeechLanguages) { lang ->
+                        val isSelected = dictationLanguage == lang.code
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    viewModel.setDictationLanguage(lang.code)
+                                    if (isDictating) {
+                                        viewModel.stopDictation()
+                                        viewModel.startDictation(context)
+                                    }
+                                    showSpeechLangDialog = false
+                                }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(lang.flagEmoji, fontSize = 20.sp)
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text(lang.displayName, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
+                                }
+                                if (isSelected) {
+                                    Icon(Icons.Default.Check, contentDescription = "Dipilih", tint = MaterialTheme.colorScheme.primary)
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showSpeechLangDialog = false }) {
+                    Text("Tutup")
                 }
             }
         )

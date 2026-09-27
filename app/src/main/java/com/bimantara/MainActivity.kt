@@ -21,10 +21,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CleaningServices
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.EventNote
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.material3.Icon
@@ -62,6 +64,9 @@ import com.bimantara.feature.cleaner.CleanerScreen
 import com.bimantara.feature.cleaner.CleanerViewModel
 import com.bimantara.feature.filemanager.FileManagerScreen
 import com.bimantara.feature.filemanager.FileManagerViewModel
+import com.bimantara.feature.home.HomeScreen
+import com.bimantara.feature.mdreader.MdReaderScreen
+import com.bimantara.feature.mdreader.MdReaderViewModel
 import com.bimantara.feature.notes.NotesScreen
 import com.bimantara.feature.notes.NotesViewModel
 import com.bimantara.core.worker.WorkManagerScheduler
@@ -71,6 +76,7 @@ import com.bimantara.feature.planner.PlannerViewModel
 import com.bimantara.feature.scanner.CamScannerScreen
 import com.bimantara.feature.scanner.CamScannerViewModel
 import com.bimantara.ui.theme.MyApplicationTheme
+import androidx.compose.material.icons.filled.Home
 
 enum class MainDestination(
     val defaultTitle: String,
@@ -78,16 +84,20 @@ enum class MainDestination(
     val activeColor: Color,
     val testTag: String
 ) {
+    HOME("Beranda", Icons.Default.Home, Color(0xFF2563EB), "nav_home"),
     FILE_MANAGER("Explorer", Icons.Default.Folder, Color(0xFF0284C7), "nav_file_manager"),
     CAM_SCANNER("Scanner", Icons.Default.DocumentScanner, Color(0xFF10B981), "nav_cam_scanner"),
+    MD_READER("MD Reader", Icons.Default.Description, Color(0xFF06B6D4), "nav_md_reader"),
     NOTES("Catatan", Icons.Default.EditNote, Color(0xFFF59E0B), "nav_notes"),
     PLANNER("Planner", Icons.Default.EventNote, Color(0xFF8B5CF6), "nav_planner"),
     CLEANER("Cleaner", Icons.Default.CleaningServices, Color(0xFFEF4444), "nav_cleaner")
 }
 
 fun MainDestination.getLocalizedTitle(strings: AppStrings): String = when (this) {
+    MainDestination.HOME -> strings.navHome
     MainDestination.FILE_MANAGER -> strings.navExplorer
     MainDestination.CAM_SCANNER -> strings.navScanner
+    MainDestination.MD_READER -> strings.navMdReader
     MainDestination.NOTES -> strings.navNotes
     MainDestination.PLANNER -> strings.navPlanner
     MainDestination.CLEANER -> strings.navCleaner
@@ -120,7 +130,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MultiToolsMainApp() {
     val context = LocalContext.current
-    var selectedDestination by rememberSaveable { mutableStateOf(MainDestination.FILE_MANAGER) }
+    var selectedDestination by rememberSaveable { mutableStateOf(MainDestination.HOME) }
     var showAboutDialog by remember { mutableStateOf(false) }
 
     // Request runtime permissions on launch (Notifications on Android 13+, Audio recording, Camera)
@@ -149,9 +159,10 @@ fun MultiToolsMainApp() {
         }
     }
 
-    // ViewModels for the 5 tools
+    // ViewModels for all tools
     val fileManagerViewModel: FileManagerViewModel = viewModel()
     val camScannerViewModel: CamScannerViewModel = viewModel()
+    val mdReaderViewModel: MdReaderViewModel = viewModel()
     val notesViewModel: NotesViewModel = viewModel()
     val plannerViewModel: PlannerViewModel = viewModel()
     val cleanerViewModel: CleanerViewModel = viewModel()
@@ -216,8 +227,10 @@ fun MultiToolsMainApp() {
                 Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
                     DestinationScreenContent(
                         destination = selectedDestination,
+                        onNavigateTo = { selectedDestination = it },
                         fileManagerViewModel = fileManagerViewModel,
                         camScannerViewModel = camScannerViewModel,
+                        mdReaderViewModel = mdReaderViewModel,
                         notesViewModel = notesViewModel,
                         plannerViewModel = plannerViewModel,
                         cleanerViewModel = cleanerViewModel,
@@ -242,6 +255,7 @@ fun MultiToolsMainApp() {
                             NavigationBarItem(
                                 selected = isSelected,
                                 onClick = { selectedDestination = destination },
+                                alwaysShowLabel = false,
                                 icon = {
                                     Icon(
                                         imageVector = destination.icon,
@@ -253,7 +267,7 @@ fun MultiToolsMainApp() {
                                 label = {
                                     Text(
                                         text = localizedTitle,
-                                        fontSize = 11.sp,
+                                        fontSize = 10.sp,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                                     )
                                 },
@@ -273,8 +287,10 @@ fun MultiToolsMainApp() {
                 ) {
                     DestinationScreenContent(
                         destination = selectedDestination,
+                        onNavigateTo = { selectedDestination = it },
                         fileManagerViewModel = fileManagerViewModel,
                         camScannerViewModel = camScannerViewModel,
+                        mdReaderViewModel = mdReaderViewModel,
                         notesViewModel = notesViewModel,
                         plannerViewModel = plannerViewModel,
                         cleanerViewModel = cleanerViewModel,
@@ -295,19 +311,37 @@ fun MultiToolsMainApp() {
 @Composable
 fun DestinationScreenContent(
     destination: MainDestination,
+    onNavigateTo: (MainDestination) -> Unit,
     fileManagerViewModel: FileManagerViewModel,
     camScannerViewModel: CamScannerViewModel,
+    mdReaderViewModel: MdReaderViewModel,
     notesViewModel: NotesViewModel,
     plannerViewModel: PlannerViewModel,
     cleanerViewModel: CleanerViewModel,
     modifier: Modifier = Modifier
 ) {
     when (destination) {
+        MainDestination.HOME -> {
+            HomeScreen(
+                onNavigateTo = onNavigateTo,
+                modifier = modifier
+            )
+        }
         MainDestination.FILE_MANAGER -> {
             FileManagerScreen(viewModel = fileManagerViewModel, modifier = modifier)
         }
         MainDestination.CAM_SCANNER -> {
             CamScannerScreen(viewModel = camScannerViewModel, modifier = modifier)
+        }
+        MainDestination.MD_READER -> {
+            MdReaderScreen(
+                viewModel = mdReaderViewModel,
+                onOpenPdfViewer = { file ->
+                    camScannerViewModel.openPdfInViewer(file, file.name)
+                    onNavigateTo(MainDestination.CAM_SCANNER)
+                },
+                modifier = modifier
+            )
         }
         MainDestination.NOTES -> {
             NotesScreen(viewModel = notesViewModel, modifier = modifier)

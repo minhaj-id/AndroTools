@@ -22,5 +22,6 @@ class AppRepository(private val database: AppDatabase) {
     suspend fun setPlannerCompleted(id: Long, completed: Boolean) = database.plannerDao().setCompleted(id, completed)
 
     suspend fun insertScannedDoc(doc: ScannedDocEntity): Long = database.docDao().insertDoc(doc)
+    suspend fun updateScannedDoc(doc: ScannedDocEntity) = database.docDao().updateDoc(doc)
     suspend fun deleteScannedDoc(doc: ScannedDocEntity) = database.docDao().deleteDoc(doc)
 }

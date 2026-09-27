@@ -174,6 +174,8 @@ data class AppStrings(
     val cleanApkBackup: String,
     val cleanApkShare: String
 ) {
+    val navHome: String get() = if (tabNotes == "Notes") "Home" else if (tabNotes == "Notas") "Inicio" else "Beranda"
+    val navMdReader: String get() = "MD Reader"
     val navExplorer: String get() = tabExplorer
     val navScanner: String get() = tabScanner
     val navNotes: String get() = tabNotes
